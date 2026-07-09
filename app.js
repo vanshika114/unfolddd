@@ -92,6 +92,130 @@ const AFFIRMATIONS = [
   { text: "Sat-Chit-Ananda — I am existence, consciousness, and bliss.", cat: "vedic" },
 ];
 
+/* ─── DATA: REFLECTION PROMPTS ─── */
+const REFLECTION_PROMPTS = {
+  gratitude: [
+    "What made today feel meaningful?",
+    "Who or what are you quietly grateful for right now?",
+    "What's a small joy you almost missed today?",
+    "What comfort did you experience this week that you took for granted?",
+    "What's something beautiful you noticed today?",
+    "Who showed up for you when you needed them?",
+    "What part of your daily routine brings you unexpected peace?",
+    "What's a gift from your past self that you're enjoying now?",
+    "What kindness did you witness today?",
+    "What's something about your body that worked well today?",
+  ],
+  growth: [
+    "What are you carrying that no longer needs your energy?",
+    "What would your future self thank you for today?",
+    "What's something you quietly overcame this week?",
+    "What version of yourself are you slowly becoming?",
+    "What did you learn about yourself this month?",
+    "What old pattern are you ready to release?",
+    "What's a fear you've outgrown without noticing?",
+    "What's something you used to struggle with that now feels easier?",
+    "What boundary did you set or wish you had set?",
+    "What's a skill you're building that matters to you?",
+  ],
+  self_awareness: [
+    "What emotion stayed with you the longest today?",
+    "What are you avoiding thinking about right now?",
+    "What's true about you today that wasn't true a year ago?",
+    "What does your body need that you're not giving it?",
+    "What's something you're not saying that needs to be heard?",
+    "What part of yourself do you hide from others?",
+    "What's a belief you hold that might not be true?",
+    "What's something you judge in others that reflects something in you?",
+    "What would you do if you weren't afraid of being judged?",
+    "What's something you need to forgive yourself for?",
+  ],
+  resilience: [
+    "What gave you hope recently?",
+    "What's something difficult you handled well this week?",
+    "What helped you keep going when you wanted to stop?",
+    "What's a challenge that revealed your strength?",
+    "What's something you survived that you're proud of?",
+    "What resource do you turn to when things feel heavy?",
+    "What's a setback that led to something better?",
+    "What's something you've rebuilt in your life?",
+    "What's a hard conversation you're glad you had?",
+    "What's something you've learned to sit with instead of fixing?",
+  ],
+  relationships: [
+    "Who in your life makes you feel seen?",
+    "What's something you wish you could say to someone?",
+    "What relationship needs more of your attention?",
+    "What's something you appreciate about someone you see often?",
+    "Who do you miss and why?",
+    "What's a connection that surprised you this year?",
+    "What's something you need to ask for in your relationships?",
+    "What boundary would improve your relationships?",
+    "Who brings out the best in you?",
+    "What's something you want to thank someone for?",
+  ],
+  purpose: [
+    "What feels like time well spent to you?",
+    "What's something you'd do even if no one saw it?",
+    "What contribution do you want to make that feels authentic?",
+    "What's a dream you've been postponing?",
+    "What matters to you that didn't use to?",
+    "What's something you want to be remembered for?",
+    "What's a problem you care about solving?",
+    "What's something you're building that will outlast you?",
+    "What's a value you're not willing to compromise?",
+    "What's something you want to create this year?",
+  ],
+  creativity: [
+    "What's something you want to create but haven't started?",
+    "What idea has been visiting you lately?",
+    "What's something you made that you're proud of?",
+    "What would you create if you didn't need it to be perfect?",
+    "What's something you want to express that you haven't?",
+    "What creative practice do you miss?",
+    "What's something beautiful you want to bring into the world?",
+    "What's a project you're excited about?",
+    "What would you do with a free afternoon?",
+    "What's something you want to learn to make?",
+  ],
+  emotions: [
+    "What surprised you today?",
+    "What are you looking forward to that you haven't admitted?",
+    "What's something that made you laugh recently?",
+    "What's something that made you feel proud?",
+    "What's an emotion you're learning to welcome?",
+    "What's something that made you feel peaceful?",
+    "What's something that made you feel alive?",
+    "What's an emotion you've been avoiding?",
+    "What's something that made you feel connected?",
+    "What's something that made you feel hopeful?",
+  ],
+  rest: [
+    "What does rest look like for you right now?",
+    "What's something you can put down for today?",
+    "What would feel like a real break?",
+    "What's something you're doing that can wait?",
+    "What's a way you can be kind to yourself today?",
+    "What's something you need to stop carrying?",
+    "What would your ideal morning of rest feel like?",
+    "What's something you can delegate or let go of?",
+    "What's a small luxury you can give yourself today?",
+    "What would doing nothing look like for you?",
+  ],
+  mindfulness: [
+    "What's happening right now in your body?",
+    "What did you notice today that usually goes unnoticed?",
+    "What's something you can fully be present for?",
+    "What's a sound you can hear right now?",
+    "What's something you can see with fresh eyes?",
+    "What's a sensation you're feeling that you usually ignore?",
+    "What's something you can taste or smell right now?",
+    "What's a thought you can observe without following?",
+    "What's one thing you can do with full attention?",
+    "What's something you can appreciate in this moment?",
+  ],
+};
+
 /* ─── DATA: CBT TIPS ─── */
 const CBT_TIPS = {
   "all-or-nothing": "Try to find the grey area. Ask yourself: is there any evidence this is not completely true?",
@@ -207,6 +331,8 @@ let state = {
   breathRunning: false,
   breathCycles: 0,
   breathTimer: null,
+  currentReflection: null,
+  reflectionHistory: [],
 };
 
 /* ─── STORAGE HELPERS ─── */
@@ -235,6 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initTrends();
   initSettings();
   initMobileMenu();
+  initReflection();
 });
 
 /* ─── DATE ─── */
@@ -1241,6 +1368,96 @@ function renderDistortionBars(distCounts) {
       </div>
     </div>
   `).join("");
+}
+
+/* ─── REFLECTION OF THE DAY ─── */
+function initReflection() {
+  // Load today's reflection or generate a new one
+  const today = todayKey();
+  const savedReflection = load("dailyReflection", null);
+  
+  if (savedReflection && savedReflection.date === today) {
+    state.currentReflection = savedReflection.prompt;
+    state.reflectionHistory = savedReflection.history || [];
+  } else {
+    // New day, generate new reflection
+    const prompt = getRandomReflectionPrompt();
+    state.currentReflection = prompt;
+    state.reflectionHistory = [prompt];
+    saveDailyReflection(today, prompt, [prompt]);
+  }
+  
+  // Display the reflection
+  const promptEl = document.getElementById("reflectionPrompt");
+  if (promptEl) promptEl.textContent = state.currentReflection;
+  
+  // Load today's writing
+  const textarea = document.getElementById("reflectionTextarea");
+  if (textarea) {
+    const savedWriting = load("reflectionWriting_" + today, "");
+    textarea.value = savedWriting;
+    
+    // Auto-save while typing
+    textarea.addEventListener("input", () => {
+      save("reflectionWriting_" + today, textarea.value);
+    });
+  }
+  
+  // Refresh button
+  document.getElementById("refreshReflection")?.addEventListener("click", selectNewReflection);
+}
+
+function getRandomReflectionPrompt() {
+  // Flatten all prompts into a single array
+  const allPrompts = [];
+  Object.values(REFLECTION_PROMPTS).forEach(categoryPrompts => {
+    allPrompts.push(...categoryPrompts);
+  });
+  
+  return allPrompts[Math.floor(Math.random() * allPrompts.length)];
+}
+
+function selectNewReflection() {
+  const today = todayKey();
+  let newPrompt;
+  let attempts = 0;
+  const maxAttempts = 10;
+  
+  // Try to find a prompt not in recent history
+  do {
+    newPrompt = getRandomReflectionPrompt();
+    attempts++;
+  } while (state.reflectionHistory.includes(newPrompt) && attempts < maxAttempts);
+  
+  // Update state
+  state.currentReflection = newPrompt;
+  state.reflectionHistory.push(newPrompt);
+  
+  // Keep history manageable (last 10)
+  if (state.reflectionHistory.length > 10) {
+    state.reflectionHistory = state.reflectionHistory.slice(-10);
+  }
+  
+  // Save to localStorage
+  saveDailyReflection(today, newPrompt, state.reflectionHistory);
+  
+  // Update UI
+  const promptEl = document.getElementById("reflectionPrompt");
+  if (promptEl) {
+    promptEl.style.opacity = "0";
+    setTimeout(() => {
+      promptEl.textContent = newPrompt;
+      promptEl.style.opacity = "1";
+    }, 150);
+  }
+}
+
+function saveDailyReflection(date, prompt, history) {
+  save("dailyReflection", {
+    date: date,
+    prompt: prompt,
+    history: history,
+  });
 }
 
 /* ─── GLOBAL EXPOSE (for inline onclick handlers) ─── */
