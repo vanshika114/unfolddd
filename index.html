@@ -7,9 +7,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body data-theme="light">
+
+  <!-- ═══════════════════════════════════════════
+       AUTHENTICATION OVERLAY
+  ═══════════════════════════════════════════ -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-container">
+      <div class="auth-header">
+        <div class="auth-logo">
+          <span class="logo-leaf">🌿</span>
+          <span class="logo-text">Unfold</span>
+        </div>
+        <p class="auth-subtitle">Your daily growth companion</p>
+      </div>
+      
+      <div class="auth-form">
+        <div class="auth-error" id="authError" style="display: none;"></div>
+        
+        <div class="auth-field">
+          <label for="authEmail">Email</label>
+          <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        
+        <div class="auth-field">
+          <label for="authPassword">Password</label>
+          <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
+        </div>
+        
+        <div class="auth-actions">
+          <button class="btn-primary auth-btn" id="signInBtn">Sign In</button>
+          <button class="btn-ghost auth-btn" id="signUpBtn">Create Account</button>
+        </div>
+        
+        <p class="auth-hint">Your data is secure and private</p>
+      </div>
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════
        SIDEBAR NAV
@@ -47,6 +83,13 @@
       </nav>
     </div>
     <div class="sidebar-bottom">
+      <div class="user-info" id="sidebarUserInfo" style="display: none;">
+        <div class="user-email" id="sidebarUserEmail"></div>
+        <div class="cloud-sync-indicator" id="sidebarCloudSync">
+          <span class="sync-icon">☁️</span>
+          <span class="sync-text">Cloud Sync Enabled</span>
+        </div>
+      </div>
       <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
         <span class="theme-label">Dark mode</span>
       </button>
@@ -54,6 +97,7 @@
         <span class="streak-count" id="sidebarStreak">0</span>
         <span class="streak-label">day streak</span>
       </div>
+      <button class="sign-out-btn" id="signOutBtn" style="display: none;">Sign Out</button>
     </div>
   </aside>
 
@@ -511,6 +555,25 @@
 
       <div class="settings-layout">
         <div class="settings-section">
+          <h3 class="settings-section-title">Account</h3>
+          <p class="settings-section-desc">Your account information</p>
+          <div class="account-card" id="accountCard" style="display: none;">
+            <div class="account-info">
+              <div class="account-label">Signed in as:</div>
+              <div class="account-email" id="settingsUserEmail"></div>
+              <div class="cloud-sync-badge" id="settingsCloudSync">
+                <span class="sync-icon">☁️</span>
+                <span class="sync-text">Cloud Sync Enabled</span>
+              </div>
+            </div>
+            <button class="btn-ghost" id="settingsSignOutBtn">Sign Out</button>
+          </div>
+          <div class="account-card" id="noAccountCard">
+            <p class="account-text">Sign in to enable cloud sync and access your data from anywhere.</p>
+          </div>
+        </div>
+
+        <div class="settings-section">
           <h3 class="settings-section-title">Theme</h3>
           <p class="settings-section-desc">Choose a theme that resonates with you</p>
           <div class="theme-grid" id="themeGrid">
@@ -556,6 +619,6 @@
     </a>
   </nav>
 
-  <script src="app.js"></script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>

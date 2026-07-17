@@ -2,6 +2,9 @@
     Unfold— app.js
    ═══════════════════════════════════════════════ */
 
+// Import Supabase client for authentication
+import { supabase, getCurrentUser } from './supabase.js';
+
 /* ─── DATA: THEMES ─── */
 const THEMES = {
   light: {
@@ -347,14 +350,19 @@ function load(key, fallback) {
 }
 
 /* ─── INIT ─── */
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  // Initialize authentication first
+  setupAuthListeners();
+  checkSession();
+  
+  // Initialize app components
   setDate();
   setDailyQuote();
   initNav();
   initTheme();
   initHome();
   initCheckin();
-  initJournal();
+  await initJournal(); // Journal is now async (uses Supabase)
   initBreathwork();
   initRitual();
   initAffirmations();
@@ -400,7 +408,7 @@ function initNav() {
   document.getElementById("openRitual")?.addEventListener("click", () => navigateTo("ritual"));
 }
 
-function navigateTo(page) {
+async function navigateTo(page) {
   state.currentPage = page;
 
   document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
@@ -414,8 +422,8 @@ function navigateTo(page) {
   // Close mobile sidebar if open
   closeMobileSidebar();
 
-  // Refresh home data when going home
-  if (page === "home") refreshHome();
+  // Refresh home data when going home (now async)
+  if (page === "home") await refreshHome();
   if (page === "trends") renderTrends();
   if (page === "settings") renderThemeGrid();
 }
@@ -486,14 +494,32 @@ function getRandomItem(array) {
   return array[Math.floor(Math.random() * array.length)];
 }
 
-function analyzeUserContext() {
+async function analyzeUserContext() {
   const checkins = load("checkins", []);
-  const journalEntries = load("journalEntries", []);
   const ritualSteps = load("ritualSteps", []);
   const today = todayKey();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayKey = yesterday.toISOString().split("T")[0];
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Check journal entries from Supabase for context analysis
+  //   Fallback to localStorage if not authenticated
+  // ═══════════════════════════════════════════════════════════════
+  let journalEntries = [];
+  const user = await getCurrentUser();
+  if (user) {
+    const { data: entries, error } = await supabase
+      .from('journal_entries')
+      .select('id')
+      .eq('user_id', user.id);
+    if (!error && entries) {
+      journalEntries = entries;
+    }
+  } else {
+    // Fallback to localStorage for non-authenticated users
+    journalEntries = load("journalEntries", []);
+  }
 
   const streak = calcStreak(checkins);
   const hasHistory = checkins.length > 0 || journalEntries.length > 0;
@@ -534,9 +560,9 @@ function analyzeUserContext() {
   return "generalReturn";
 }
 
-function generateGreeting() {
+async function generateGreeting() {
   const timeOfDay = getTimeOfDay();
-  const context = analyzeUserContext();
+  const context = await analyzeUserContext();
   
   const timeGreeting = getRandomItem(TIME_BASED_GREETINGS[timeOfDay]);
   const contextualMessages = CONTEXTUAL_GREETINGS[context] || CONTEXTUAL_GREETINGS.generalReturn;
@@ -549,8 +575,8 @@ function generateGreeting() {
   };
 }
 
-function updateGreeting() {
-  const greeting = generateGreeting();
+async function updateGreeting() {
+  const greeting = await generateGreeting();
   const titleEl = document.querySelector(".page-title");
   if (titleEl) {
     titleEl.innerHTML = `${greeting.timeGreeting}. <br><em>${greeting.contextual}</em>`;
@@ -568,9 +594,9 @@ function initHome() {
   });
 }
 
-function refreshHome() {
-  // Update greeting
-  updateGreeting();
+async function refreshHome() {
+  // Update greeting (now async - uses Supabase for journal context)
+  await updateGreeting();
 
   // Mood
   const checkins = load("checkins", []);
@@ -746,7 +772,7 @@ function showCheckinDone() {
 }
 
 /* ─── JOURNAL ─── */
-function initJournal() {
+async function initJournal() {
   setCurrentPrompt();
 
   document.getElementById("newPrompt")?.addEventListener("click", () => {
@@ -763,15 +789,19 @@ function initJournal() {
     save("journalDraft", textarea.value);
   });
 
-  // Load draft
+  // Load draft (still using localStorage for draft - temporary workspace)
+  // ═══════════════════════════════════════════════════════════════
+  //   NOTE: Draft remains in localStorage as a temporary workspace
+  //   Only saved entries go to Supabase
+  // ═══════════════════════════════════════════════════════════════
   const draft = load("journalDraft", "");
   if (textarea && draft) textarea.value = draft;
 
-  // Save entry
+  // Save entry (now async - uses Supabase)
   document.getElementById("saveEntry")?.addEventListener("click", saveJournalEntry);
 
-  // Load past entries
-  renderEntries();
+  // Load past entries (now async - uses Supabase)
+  await renderEntries();
 }
 
 function setCurrentPrompt() {
@@ -782,22 +812,92 @@ function setCurrentPrompt() {
   if (src) src.textContent = prompt.source;
 }
 
-function saveJournalEntry() {
+async function saveJournalEntry() {
+  console.log('saveJournalEntry() called');
+  
   const textarea = document.getElementById("journalTextarea");
-  if (!textarea || !textarea.value.trim()) return;
-  const entries = load("journalEntries", []);
-  entries.unshift({
-    id: Date.now(),
+  if (!textarea || !textarea.value.trim()) {
+    console.log('saveJournalEntry() aborted: no textarea or empty content');
+    return;
+  }
+
+  console.log('Textarea has content, checking authentication...');
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Check authentication before saving to Supabase
+  //   Use getCurrentUser() as the single source of truth
+  // ═══════════════════════════════════════════════════════════════
+  const user = await getCurrentUser();
+  
+  console.log('User check result:', { user: !!user });
+  
+  if (!user) {
+    console.log('User not authenticated, showing sign in message');
+    // User is not authenticated - show friendly message
+    const btn = document.getElementById("saveEntry");
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "Please sign in to save";
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+    return;
+  }
+
+  console.log('User authenticated, preparing to save to Supabase');
+  console.log('User ID:', user.id);
+  console.log('Entry data:', {
+    user_id: user.id,
     date: todayKey(),
-    timestamp: Date.now(),
-    text: textarea.value.trim(),
+    text_length: textarea.value.trim().length,
     prompt: JOURNAL_PROMPTS[state.currentPromptIndex].text,
+    prompt_source: JOURNAL_PROMPTS[state.currentPromptIndex].source
   });
-  save("journalEntries", entries);
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Save journal entry to Supabase journal_entries table
+  // ═══════════════════════════════════════════════════════════════
+  const { data, error } = await supabase
+    .from('journal_entries')
+    .insert({
+      user_id: user.id,
+      date: todayKey(),
+      text: textarea.value.trim(),
+      prompt: JOURNAL_PROMPTS[state.currentPromptIndex].text,
+      prompt_source: JOURNAL_PROMPTS[state.currentPromptIndex].source,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error saving journal entry:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+    const btn = document.getElementById("saveEntry");
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "Save failed";
+      setTimeout(() => btn.textContent = orig, 2000);
+    }
+    return;
+  }
+
+  console.log('Journal entry saved successfully:', data);
+
+  // Clear draft and textarea
+  // ═══════════════════════════════════════════════════════════════
+  //   NOTE: Draft is cleared from localStorage after successful save
+  // ═══════════════════════════════════════════════════════════════
   save("journalDraft", "");
   textarea.value = "";
   const wc = document.getElementById("wordCount");
   if (wc) wc.textContent = "0 words";
+  
+  console.log('Calling renderEntries() to refresh list...');
+  // Refresh entries list from database
   renderEntries();
 
   // Visual feedback
@@ -809,26 +909,111 @@ function saveJournalEntry() {
   }
 }
 
-function renderEntries() {
-  const entries = load("journalEntries", []);
+async function renderEntries() {
+  console.log('renderEntries() called');
+  
   const list = document.getElementById("entriesList");
-  if (!list) return;
-  if (!entries.length) {
+  if (!list) {
+    console.log('renderEntries() aborted: entriesList element not found');
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Check authentication before loading from Supabase
+  //   Use getCurrentUser() as the single source of truth
+  // ═══════════════════════════════════════════════════════════════
+  const user = await getCurrentUser();
+  
+  console.log('renderEntries() user check:', { user: !!user });
+  
+  if (!user) {
+    console.log('User not authenticated, showing sign in message');
+    // User is not authenticated - show empty state
+    list.innerHTML = '<p class="empty-state">Sign in to view your journal entries.</p>';
+    return;
+  }
+
+  console.log('User authenticated, loading entries from Supabase');
+  console.log('User ID:', user.id);
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Load journal entries from Supabase journal_entries table
+  //   Order by created_at descending to show newest first
+  // ═══════════════════════════════════════════════════════════════
+  const { data: entries, error } = await supabase
+    .from('journal_entries')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(10);
+
+  console.log('Supabase query result:', { entries, error });
+
+  if (error) {
+    console.error('Error loading journal entries:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
+    list.innerHTML = '<p class="empty-state">Failed to load entries. Please try again.</p>';
+    return;
+  }
+
+  if (!entries || entries.length === 0) {
+    console.log('No entries found for user');
     list.innerHTML = '<p class="empty-state">Your story begins with a single page.</p>';
     return;
   }
-  list.innerHTML = entries.slice(0, 10).map(e => `
-    <div class="entry-item" onclick="loadEntry(${e.id})">
+
+  console.log(`Found ${entries.length} entries, rendering...`);
+
+  // Render entries
+  list.innerHTML = entries.map(e => `
+    <div class="entry-item" onclick="loadEntry('${e.id}')">
       <div class="entry-date">${formatDate(e.date)}</div>
       <div class="entry-preview">${e.text.substring(0, 80)}${e.text.length > 80 ? "..." : ""}</div>
     </div>
   `).join("");
 }
 
-function loadEntry(id) {
-  const entries = load("journalEntries", []);
-  const entry = entries.find(e => e.id === id);
-  if (!entry) return;
+async function loadEntry(id) {
+  console.log('loadEntry() called with id:', id);
+  
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Check authentication before loading from Supabase
+  //   Use getCurrentUser() as the single source of truth
+  // ═══════════════════════════════════════════════════════════════
+  const user = await getCurrentUser();
+  
+  console.log('loadEntry() user check:', { user: !!user });
+  
+  if (!user) {
+    console.error('User not authenticated');
+    return;
+  }
+
+  console.log('User authenticated, loading entry from Supabase');
+  console.log('User ID:', user.id);
+
+  // ═══════════════════════════════════════════════════════════════
+  //   DATABASE: Load specific journal entry from Supabase by UUID
+  // ═══════════════════════════════════════════════════════════════
+  const { data: entry, error } = await supabase
+    .from('journal_entries')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+
+  console.log('Supabase entry query result:', { entry, error });
+
+  if (error || !entry) {
+    console.error('Error loading journal entry:', error);
+    return;
+  }
+
   const textarea = document.getElementById("journalTextarea");
   if (textarea) textarea.value = entry.text;
 }
@@ -1466,3 +1651,287 @@ window.deleteStep = deleteStep;
 window.unsaveAffirmation = unsaveAffirmation;
 window.selectTheme = selectTheme;
 window.loadEntry = loadEntry;
+
+/* ─── AUTHENTICATION ─── */
+
+// DOM Elements for authentication
+const authOverlay = document.getElementById('authOverlay');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const signInBtn = document.getElementById('signInBtn');
+const signUpBtn = document.getElementById('signUpBtn');
+const authError = document.getElementById('authError');
+const signOutBtn = document.getElementById('signOutBtn');
+const settingsSignOutBtn = document.getElementById('settingsSignOutBtn');
+
+/**
+ * Check for existing Supabase session on page load
+ * If session exists, hide auth overlay and show app
+ * If no session, show auth overlay
+ * Uses getCurrentUser() as the single source of truth
+ */
+async function checkSession() {
+  try {
+    const user = await getCurrentUser();
+    
+    if (user) {
+      // User is authenticated, hide overlay and show user info
+      hideAuthOverlay();
+      updateUserDisplay(user);
+    } else {
+      // No session, show auth overlay and hide user info
+      showAuthOverlay();
+      updateUserDisplay(null);
+    }
+  } catch (err) {
+    console.error('Session check failed:', err);
+    showAuthOverlay();
+    updateUserDisplay(null);
+  }
+}
+
+/**
+ * Show the authentication overlay
+ */
+function showAuthOverlay() {
+  if (authOverlay) {
+    authOverlay.classList.add('active');
+  }
+}
+
+/**
+ * Hide the authentication overlay
+ */
+function hideAuthOverlay() {
+  if (authOverlay) {
+    authOverlay.classList.remove('active');
+  }
+}
+
+/**
+ * Display authentication error message
+ */
+function showAuthError(message) {
+  if (authError) {
+    authError.textContent = message;
+    authError.style.display = 'block';
+  }
+}
+
+/**
+ * Hide authentication error message
+ */
+function hideAuthError() {
+  if (authError) {
+    authError.style.display = 'none';
+  }
+}
+
+/**
+ * Update user display in sidebar and settings
+ */
+function updateUserDisplay(user) {
+  const sidebarUserInfo = document.getElementById('sidebarUserInfo');
+  const sidebarUserEmail = document.getElementById('sidebarUserEmail');
+  const sidebarCloudSync = document.getElementById('sidebarCloudSync');
+  const sidebarSignOut = document.getElementById('signOutBtn');
+  
+  const accountCard = document.getElementById('accountCard');
+  const noAccountCard = document.getElementById('noAccountCard');
+  const settingsUserEmail = document.getElementById('settingsUserEmail');
+  const settingsCloudSync = document.getElementById('settingsCloudSync');
+  
+  if (user && user.email) {
+    // Show user info in sidebar
+    if (sidebarUserInfo) {
+      sidebarUserInfo.style.display = 'block';
+      if (sidebarUserEmail) sidebarUserEmail.textContent = user.email;
+      if (sidebarCloudSync) sidebarCloudSync.style.display = 'flex';
+    }
+    if (sidebarSignOut) {
+      sidebarSignOut.style.display = 'block';
+    }
+    
+    // Show user info in settings
+    if (accountCard) {
+      accountCard.style.display = 'block';
+      if (settingsUserEmail) settingsUserEmail.textContent = user.email;
+      if (settingsCloudSync) settingsCloudSync.style.display = 'flex';
+    }
+    if (noAccountCard) {
+      noAccountCard.style.display = 'none';
+    }
+  } else {
+    // Hide user info in sidebar
+    if (sidebarUserInfo) {
+      sidebarUserInfo.style.display = 'none';
+    }
+    if (sidebarSignOut) {
+      sidebarSignOut.style.display = 'none';
+    }
+    
+    // Hide user info in settings
+    if (accountCard) {
+      accountCard.style.display = 'none';
+    }
+    if (noAccountCard) {
+      noAccountCard.style.display = 'block';
+    }
+  }
+}
+
+/**
+ * Handle sign in with email and password
+ */
+async function handleSignIn() {
+  const email = authEmail?.value.trim();
+  const password = authPassword?.value;
+  
+  // Basic validation
+  if (!email || !password) {
+    showAuthError('Please enter both email and password');
+    return;
+  }
+  
+  // Disable buttons during request
+  if (signInBtn) signInBtn.disabled = true;
+  if (signUpBtn) signUpBtn.disabled = true;
+  hideAuthError();
+  
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password
+    });
+    
+    if (error) {
+      showAuthError(error.message || 'Sign in failed. Please check your credentials.');
+    } else {
+      // Sign in successful - auth state change listener will handle UI update
+      // The onAuthStateChange listener will call getCurrentUser() and update UI
+    }
+  } catch (err) {
+    console.error('Sign in error:', err);
+    showAuthError('An unexpected error occurred. Please try again.');
+  } finally {
+    // Re-enable buttons
+    if (signInBtn) signInBtn.disabled = false;
+    if (signUpBtn) signUpBtn.disabled = false;
+  }
+}
+
+/**
+ * Handle sign up with email and password
+ */
+async function handleSignUp() {
+  const email = authEmail?.value.trim();
+  const password = authPassword?.value;
+  
+  // Basic validation
+  if (!email || !password) {
+    showAuthError('Please enter both email and password');
+    return;
+  }
+  
+  if (password.length < 6) {
+    showAuthError('Password must be at least 6 characters long');
+    return;
+  }
+  
+  // Disable buttons during request
+  if (signInBtn) signInBtn.disabled = true;
+  if (signUpBtn) signUpBtn.disabled = true;
+  hideAuthError();
+  
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: email,
+      password: password
+    });
+    
+    if (error) {
+      showAuthError(error.message || 'Sign up failed. Please try again.');
+    } else {
+      // Sign up successful
+      hideAuthOverlay();
+      updateUserDisplay(data.user);
+    }
+  } catch (err) {
+    console.error('Sign up error:', err);
+    showAuthError('An unexpected error occurred. Please try again.');
+  } finally {
+    // Re-enable buttons
+    if (signInBtn) signInBtn.disabled = false;
+    if (signUpBtn) signUpBtn.disabled = false;
+  }
+}
+
+/**
+ * Handle sign out
+ */
+async function handleSignOut() {
+  try {
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error('Sign out error:', error);
+    } else {
+      // Sign out successful - auth state change listener will handle UI update
+      updateUserDisplay(null);
+    }
+  } catch (err) {
+    console.error('Sign out error:', err);
+  }
+}
+
+/**
+ * Set up authentication event listeners
+ */
+function setupAuthListeners() {
+  // Sign in button click
+  if (signInBtn) {
+    signInBtn.addEventListener('click', handleSignIn);
+  }
+  
+  // Sign up button click
+  if (signUpBtn) {
+    signUpBtn.addEventListener('click', handleSignUp);
+  }
+  
+  // Sign out button clicks
+  if (signOutBtn) {
+    signOutBtn.addEventListener('click', handleSignOut);
+  }
+  
+  if (settingsSignOutBtn) {
+    settingsSignOutBtn.addEventListener('click', handleSignOut);
+  }
+  
+  // Allow Enter key to submit
+  if (authPassword) {
+    authPassword.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        handleSignIn();
+      }
+    });
+  }
+  
+  if (authEmail) {
+    authEmail.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        authPassword?.focus();
+      }
+    });
+  }
+  
+  // Listen for auth state changes
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session) {
+      hideAuthOverlay();
+      updateUserDisplay(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      showAuthOverlay();
+      updateUserDisplay(null);
+    }
+  });
+}
