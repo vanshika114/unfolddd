@@ -1658,11 +1658,167 @@ window.loadEntry = loadEntry;
 const authOverlay = document.getElementById('authOverlay');
 const authEmail = document.getElementById('authEmail');
 const authPassword = document.getElementById('authPassword');
+const authConfirmPassword = document.getElementById('authConfirmPassword');
+
 const signInBtn = document.getElementById('signInBtn');
 const signUpBtn = document.getElementById('signUpBtn');
+
 const authError = document.getElementById('authError');
-const signOutBtn = document.getElementById('signOutBtn');
-const settingsSignOutBtn = document.getElementById('settingsSignOutBtn');
+
+const emailError = document.getElementById('emailError');
+const passwordError = document.getElementById('passwordError');
+const confirmPasswordError = document.getElementById('confirmPasswordError');
+
+const passwordToggle = document.getElementById('passwordToggle');
+const confirmPasswordToggle = document.getElementById('confirmPasswordToggle');
+
+const authModeToggle = document.getElementById('authModeToggle');
+const authSwitchText = document.getElementById('authSwitchText');
+
+const confirmPasswordField =
+  document.getElementById('confirmPasswordField');
+
+const passwordStrength =
+  document.getElementById('passwordStrength');
+
+const strengthFill =
+  document.getElementById('strengthFill');
+
+const strengthLabel =
+  document.getElementById('strengthLabel');
+
+const lengthRequirement =
+  document.getElementById('lengthRequirement');
+
+const uppercaseRequirement =
+  document.getElementById('uppercaseRequirement');
+
+const numberRequirement =
+  document.getElementById('numberRequirement');
+
+const specialRequirement =
+  document.getElementById('specialRequirement');
+
+let isSignUpMode = false;
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function getPasswordStrength(password) {
+  let score = 0;
+
+  const requirements = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    number: /\d/.test(password),
+    special: /[!@#$%^&*(),.?":{}|<>[\]\\/'`~_+\-=;]/.test(password)
+  };
+
+  if (requirements.length) score += 25;
+  if (requirements.uppercase) score += 25;
+  if (requirements.number) score += 25;
+  if (requirements.special) score += 25;
+
+  return {
+    score,
+    requirements
+  };
+}
+
+function updatePasswordStrength() {
+  if (!isSignUpMode || !passwordStrength) return;
+
+  const password = authPassword?.value || '';
+  const { score, requirements } = getPasswordStrength(password);
+
+  if (strengthFill) {
+    strengthFill.style.width = `${score}%`;
+  }
+
+  if (strengthLabel) {
+    if (!password) {
+      strengthLabel.textContent = 'Too weak';
+    } else if (score <= 25) {
+      strengthLabel.textContent = 'Weak';
+    } else if (score <= 50) {
+      strengthLabel.textContent = 'Fair';
+    } else if (score <= 75) {
+      strengthLabel.textContent = 'Good';
+    } else {
+      strengthLabel.textContent = 'Strong';
+    }
+  }
+
+  updateRequirement(
+    lengthRequirement,
+    requirements.length,
+    '8+ characters'
+  );
+
+  updateRequirement(
+    uppercaseRequirement,
+    requirements.uppercase,
+    'Uppercase letter'
+  );
+
+  updateRequirement(
+    numberRequirement,
+    requirements.number,
+    'Number'
+  );
+
+  updateRequirement(
+    specialRequirement,
+    requirements.special,
+    'Special character'
+  );
+}
+
+function updateRequirement(element, passed, text) {
+  if (!element) return;
+
+  element.textContent = `${passed ? '✓' : '○'} ${text}`;
+  element.classList.toggle('passed', passed);
+}
+
+function togglePasswordVisibility(input, button) {
+  if (!input || !button) return;
+
+  const isPassword = input.type === 'password';
+
+  input.type = isPassword ? 'text' : 'password';
+
+  button.textContent = isPassword ? '🙈' : '👁';
+  button.setAttribute(
+    'aria-label',
+    isPassword ? 'Hide password' : 'Show password'
+  );
+}
+
+
+
+function clearValidationErrors() {
+  if (emailError) emailError.textContent = '';
+  if (passwordError) passwordError.textContent = '';
+  if (confirmPasswordError) confirmPasswordError.textContent = '';
+
+  document
+    .querySelectorAll('.auth-field input')
+    .forEach(input => {
+      input.classList.remove('input-error');
+    });
+}
+
+function setFieldError(input, errorElement, message) {
+  if (errorElement) {
+    errorElement.textContent = message;
+  }
+
+  if (input) {
+    input.classList.add('input-error');
+  }
+}
 
 /**
  * Check for existing Supabase session on page load
@@ -1785,38 +1941,79 @@ function updateUserDisplay(user) {
  */
 async function handleSignIn() {
   const email = authEmail?.value.trim();
-  const password = authPassword?.value;
-  
-  // Basic validation
-  if (!email || !password) {
-    showAuthError('Please enter both email and password');
+  const password = authPassword?.value || '';
+
+  clearValidationErrors();
+  hideAuthError();
+
+  let hasError = false;
+
+  if (!email) {
+    setFieldError(
+      authEmail,
+      emailError,
+      'Email is required.'
+    );
+    hasError = true;
+  } else if (!isValidEmail(email)) {
+    setFieldError(
+      authEmail,
+      emailError,
+      'Please enter a valid email address.'
+    );
+    hasError = true;
+  }
+
+  if (!password) {
+    setFieldError(
+      authPassword,
+      passwordError,
+      'Password is required.'
+    );
+    hasError = true;
+  }
+
+  if (hasError) {
     return;
   }
-  
-  // Disable buttons during request
+
   if (signInBtn) signInBtn.disabled = true;
   if (signUpBtn) signUpBtn.disabled = true;
-  hideAuthError();
-  
+
+  if (signInBtn) {
+    signInBtn.textContent = 'Signing in...';
+  }
+
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password
-    });
-    
+    const { data, error } =
+      await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
     if (error) {
-      showAuthError(error.message || 'Sign in failed. Please check your credentials.');
-    } else {
-      // Sign in successful - auth state change listener will handle UI update
-      // The onAuthStateChange listener will call getCurrentUser() and update UI
+      showAuthError(
+        error.message ||
+        'Sign in failed. Please check your credentials.'
+      );
     }
+
   } catch (err) {
     console.error('Sign in error:', err);
-    showAuthError('An unexpected error occurred. Please try again.');
+
+    showAuthError(
+      'An unexpected error occurred. Please try again.'
+    );
+
   } finally {
-    // Re-enable buttons
-    if (signInBtn) signInBtn.disabled = false;
-    if (signUpBtn) signUpBtn.disabled = false;
+    if (signInBtn) {
+      signInBtn.disabled = false;
+      signInBtn.textContent = 'Sign In';
+    }
+
+    if (signUpBtn) {
+      signUpBtn.disabled = false;
+    }
   }
 }
 
@@ -1825,44 +2022,118 @@ async function handleSignIn() {
  */
 async function handleSignUp() {
   const email = authEmail?.value.trim();
-  const password = authPassword?.value;
-  
-  // Basic validation
-  if (!email || !password) {
-    showAuthError('Please enter both email and password');
+  const password = authPassword?.value || '';
+  const confirmPassword = authConfirmPassword?.value || '';
+
+  clearValidationErrors();
+  hideAuthError();
+
+  let hasError = false;
+
+  // Email validation
+  if (!email) {
+    setFieldError(
+      authEmail,
+      emailError,
+      'Email is required.'
+    );
+    hasError = true;
+  } else if (!isValidEmail(email)) {
+    setFieldError(
+      authEmail,
+      emailError,
+      'Please enter a valid email address.'
+    );
+    hasError = true;
+  }
+
+  // Password validation
+  if (!password) {
+    setFieldError(
+      authPassword,
+      passwordError,
+      'Password is required.'
+    );
+    hasError = true;
+  } else if (password.length < 8) {
+    setFieldError(
+      authPassword,
+      passwordError,
+      'Password must be at least 8 characters.'
+    );
+    hasError = true;
+  }
+
+  // Confirm password
+  if (!confirmPassword) {
+    setFieldError(
+      authConfirmPassword,
+      confirmPasswordError,
+      'Please confirm your password.'
+    );
+    hasError = true;
+  } else if (password !== confirmPassword) {
+    setFieldError(
+      authConfirmPassword,
+      confirmPasswordError,
+      'Passwords do not match.'
+    );
+    hasError = true;
+  }
+
+  // Strength validation
+  const { score } = getPasswordStrength(password);
+
+  if (score < 50) {
+    setFieldError(
+      authPassword,
+      passwordError,
+      'Please create a stronger password.'
+    );
+    hasError = true;
+  }
+
+  if (hasError) {
     return;
   }
-  
-  if (password.length < 6) {
-    showAuthError('Password must be at least 6 characters long');
-    return;
-  }
-  
-  // Disable buttons during request
+
   if (signInBtn) signInBtn.disabled = true;
   if (signUpBtn) signUpBtn.disabled = true;
-  hideAuthError();
-  
+
+  if (signUpBtn) {
+    signUpBtn.textContent = 'Creating account...';
+  }
+
   try {
     const { data, error } = await supabase.auth.signUp({
-      email: email,
-      password: password
+      email,
+      password
     });
-    
+
     if (error) {
-      showAuthError(error.message || 'Sign up failed. Please try again.');
-    } else {
-      // Sign up successful
-      hideAuthOverlay();
-      updateUserDisplay(data.user);
+      showAuthError(
+        error.message || 'Sign up failed. Please try again.'
+      );
+      return;
     }
+
+    hideAuthOverlay();
+    updateUserDisplay(data.user);
+
   } catch (err) {
     console.error('Sign up error:', err);
-    showAuthError('An unexpected error occurred. Please try again.');
+
+    showAuthError(
+      'An unexpected error occurred. Please try again.'
+    );
+
   } finally {
-    // Re-enable buttons
     if (signInBtn) signInBtn.disabled = false;
     if (signUpBtn) signUpBtn.disabled = false;
+
+    if (signUpBtn) {
+      signUpBtn.textContent = 'Create Account';
+    }
   }
 }
 
@@ -1884,54 +2155,260 @@ async function handleSignOut() {
   }
 }
 
+function setAuthMode(signUpMode) {
+  isSignUpMode = signUpMode;
+
+  document.querySelectorAll('.signup-only').forEach(element => {
+  element.style.display = signUpMode ? 'flex' : 'none';
+});
+
+  if (signInBtn) {
+    signInBtn.style.display = signUpMode ? 'none' : '';
+  }
+
+  if (signUpBtn) {
+    signUpBtn.style.display = signUpMode ? '' : 'none';
+    signUpBtn.textContent = 'Create Account';
+  }
+
+  if (authSwitchText) {
+    authSwitchText.textContent = signUpMode
+      ? 'Already have an account?'
+      : 'New here?';
+  }
+
+  if (authModeToggle) {
+    authModeToggle.textContent = signUpMode
+      ? 'Sign in'
+      : 'Create an account';
+  }
+
+  clearValidationErrors();
+
+  if (passwordStrength) {
+    passwordStrength.style.display =
+      signUpMode ? '' : 'none';
+  }
+}
+
 /**
  * Set up authentication event listeners
  */
 function setupAuthListeners() {
-  // Sign in button click
+
+  // ─────────────────────────────
+  // SIGN IN
+  // ─────────────────────────────
   if (signInBtn) {
     signInBtn.addEventListener('click', handleSignIn);
   }
-  
-  // Sign up button click
+
+
+  // ─────────────────────────────
+  // SIGN UP
+  // ─────────────────────────────
   if (signUpBtn) {
     signUpBtn.addEventListener('click', handleSignUp);
   }
-  
-  // Sign out button clicks
-  if (signOutBtn) {
-    signOutBtn.addEventListener('click', handleSignOut);
+
+
+  // ─────────────────────────────
+  // SWITCH SIGN IN / SIGN UP
+  // ─────────────────────────────
+  if (authModeToggle) {
+    authModeToggle.addEventListener('click', () => {
+      console.log('Auth mode toggle clicked');
+
+      setAuthMode(!isSignUpMode);
+    });
   }
-  
-  if (settingsSignOutBtn) {
-    settingsSignOutBtn.addEventListener('click', handleSignOut);
+
+
+  // ─────────────────────────────
+  // PASSWORD VISIBILITY
+  // ─────────────────────────────
+  if (passwordToggle) {
+    passwordToggle.addEventListener('click', () => {
+      togglePasswordVisibility(
+        authPassword,
+        passwordToggle
+      );
+    });
   }
-  
-  // Allow Enter key to submit
+
+
+  if (confirmPasswordToggle) {
+    confirmPasswordToggle.addEventListener('click', () => {
+      togglePasswordVisibility(
+        authConfirmPassword,
+        confirmPasswordToggle
+      );
+    });
+  }
+
+
+  // ─────────────────────────────
+  // PASSWORD STRENGTH
+  // ─────────────────────────────
   if (authPassword) {
-    authPassword.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        handleSignIn();
+    authPassword.addEventListener(
+      'input',
+      updatePasswordStrength
+    );
+  }
+
+
+  // ─────────────────────────────
+  // CONFIRM PASSWORD
+  // ─────────────────────────────
+  if (authConfirmPassword) {
+
+    authConfirmPassword.addEventListener('input', () => {
+
+      if (!isSignUpMode) return;
+
+      const password = authPassword.value;
+      const confirmPassword =
+        authConfirmPassword.value;
+
+      if (
+        confirmPassword &&
+        password !== confirmPassword
+      ) {
+
+        setFieldError(
+          authConfirmPassword,
+          confirmPasswordError,
+          'Passwords do not match.'
+        );
+
+      } else {
+
+        if (confirmPasswordError) {
+          confirmPasswordError.textContent = '';
+        }
+
+        authConfirmPassword.classList.remove(
+          'input-error'
+        );
       }
     });
   }
-  
+
+
+  // ─────────────────────────────
+  // EMAIL VALIDATION
+  // ─────────────────────────────
   if (authEmail) {
-    authEmail.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        authPassword?.focus();
+
+    authEmail.addEventListener('blur', () => {
+
+      const email =
+        authEmail.value.trim();
+
+      if (
+        email &&
+        !isValidEmail(email)
+      ) {
+
+        setFieldError(
+          authEmail,
+          emailError,
+          'Please enter a valid email address.'
+        );
+
+      } else {
+
+        if (emailError) {
+          emailError.textContent = '';
+        }
+
+        authEmail.classList.remove(
+          'input-error'
+        );
       }
     });
   }
-  
-  // Listen for auth state changes
-  supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_IN' && session) {
-      hideAuthOverlay();
-      updateUserDisplay(session.user);
-    } else if (event === 'SIGNED_OUT') {
-      showAuthOverlay();
-      updateUserDisplay(null);
+
+
+  // ─────────────────────────────
+  // ENTER KEY
+  // ─────────────────────────────
+  if (authPassword) {
+
+    authPassword.addEventListener(
+      'keypress',
+      (e) => {
+
+        if (e.key !== 'Enter') return;
+
+        if (isSignUpMode) {
+          handleSignUp();
+        } else {
+          handleSignIn();
+        }
+      }
+    );
+  }
+
+
+  if (authEmail) {
+
+    authEmail.addEventListener(
+      'keypress',
+      (e) => {
+
+        if (e.key === 'Enter') {
+          authPassword?.focus();
+        }
+      }
+    );
+  }
+
+
+  // ─────────────────────────────
+  // SIGN OUT
+  // ─────────────────────────────
+  if (signOutBtn) {
+    signOutBtn.addEventListener(
+      'click',
+      handleSignOut
+    );
+  }
+
+  if (settingsSignOutBtn) {
+    settingsSignOutBtn.addEventListener(
+      'click',
+      handleSignOut
+    );
+  }
+
+
+  // ─────────────────────────────
+  // AUTH STATE
+  // ─────────────────────────────
+  supabase.auth.onAuthStateChange(
+    (event, session) => {
+
+      if (
+        event === 'SIGNED_IN' &&
+        session
+      ) {
+
+        hideAuthOverlay();
+        updateUserDisplay(session.user);
+
+      } else if (
+        event === 'SIGNED_OUT'
+      ) {
+
+        showAuthOverlay();
+        updateUserDisplay(null);
+      }
     }
-  });
+  );
+
+
+  // Start in sign-in mode
+  setAuthMode(false);
 }

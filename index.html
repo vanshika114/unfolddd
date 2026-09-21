@@ -25,25 +25,108 @@
       </div>
       
       <div class="auth-form">
-        <div class="auth-error" id="authError" style="display: none;"></div>
-        
-        <div class="auth-field">
-          <label for="authEmail">Email</label>
-          <input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email" />
-        </div>
-        
-        <div class="auth-field">
-          <label for="authPassword">Password</label>
-          <input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password" />
-        </div>
-        
-        <div class="auth-actions">
-          <button class="btn-primary auth-btn" id="signInBtn">Sign In</button>
-          <button class="btn-ghost auth-btn" id="signUpBtn">Create Account</button>
-        </div>
-        
-        <p class="auth-hint">Your data is secure and private</p>
-      </div>
+  <div class="auth-error" id="authError" style="display: none;"></div>
+
+  <!-- Email -->
+  <div class="auth-field">
+    <label for="authEmail">Email</label>
+    <input
+      type="email"
+      id="authEmail"
+      placeholder="you@example.com"
+      autocomplete="email"
+    />
+    <span class="field-error" id="emailError"></span>
+  </div>
+
+  <!-- Password -->
+  <div class="auth-field">
+    <label for="authPassword">Password</label>
+
+    <div class="password-input-wrap">
+      <input
+        type="password"
+        id="authPassword"
+        placeholder="••••••••"
+        autocomplete="current-password"
+      />
+
+      <button
+        type="button"
+        class="password-toggle"
+        id="passwordToggle"
+        aria-label="Show password"
+      >
+        👁
+      </button>
+    </div>
+
+    <span class="field-error" id="passwordError"></span>
+  </div>
+
+  <!-- Confirm Password -->
+  <div class="auth-field signup-only" id="confirmPasswordField">
+    <label for="authConfirmPassword">Confirm Password</label>
+
+    <div class="password-input-wrap">
+      <input
+        type="password"
+        id="authConfirmPassword"
+        placeholder="••••••••"
+        autocomplete="new-password"
+      />
+
+      <button
+        type="button"
+        class="password-toggle"
+        id="confirmPasswordToggle"
+        aria-label="Show confirm password"
+      >
+        👁
+      </button>
+    </div>
+
+    <span class="field-error" id="confirmPasswordError"></span>
+  </div>
+
+  <!-- Password strength -->
+  <div class="password-strength signup-only" id="passwordStrength">
+    <div class="strength-header">
+      <span>Password strength</span>
+      <span id="strengthLabel">Too weak</span>
+    </div>
+
+    <div class="strength-bar">
+      <div class="strength-fill" id="strengthFill"></div>
+    </div>
+
+    <div class="password-requirements">
+      <span id="lengthRequirement">○ 8+ characters</span>
+      <span id="uppercaseRequirement">○ Uppercase letter</span>
+      <span id="numberRequirement">○ Number</span>
+      <span id="specialRequirement">○ Special character</span>
+    </div>
+  </div>
+
+  <div class="auth-actions">
+    <button class="btn-primary auth-btn" id="signInBtn">
+      Sign In
+    </button>
+
+    <button class="btn-ghost auth-btn" id="signUpBtn">
+      Create Account
+    </button>
+  </div>
+
+  <p class="auth-switch">
+    <span id="authSwitchText">New here?</span>
+    <button type="button" id="authModeToggle">
+      Create an account
+    </button>
+  </p>
+
+  <p class="auth-hint">Your data is secure and private</p>
+</div>
     </div>
   </div>
 
