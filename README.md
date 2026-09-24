@@ -75,7 +75,7 @@ npm run dev  # Uses Vite
 ## 🛠 Tech Stack
 
 - **Frontend**: Vanilla HTML, CSS, JavaScript
-- **Storage**: localStorage (offline-first), IndexedDB (optional for large datasets)
+- **Storage**: localStorage (offline-first)
 - **Optional Backend**: Supabase (for email/password auth and cloud sync)
 - **Build Tool**: Vite (optional, for development and production builds)
 - **Deployment**: Vercel
