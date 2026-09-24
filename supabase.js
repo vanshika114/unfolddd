@@ -1,26 +1,47 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://vmwdqhnoguotjrarrkwq.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZtd2RxaG5vZ3VvdGpyYXJya3dxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxOTI5MjksImV4cCI6MjA5OTc2ODkyOX0.0QMZEEyqSbM16F-z-pu5Un9_j8WFKfG3aB7ONWcgzeI';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase config: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true
-  }
+    detectSessionInUrl: true,
+  },
 });
 
 /**
- * Get the currently authenticated user
- * This is the SINGLE source of truth for authentication checks
- * Returns the user object or null if not authenticated
+ * Verified user (network call). Use for security-sensitive checks.
+ * Returns the user object or null if not authenticated.
  */
 export async function getCurrentUser() {
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error) {
-    console.error('Error getting current user:', error);
+    // Logged-out visitors are expected, not an error
+    if (error.name !== 'AuthSessionMissingError') {
+      console.error('Error getting current user:', error);
+    }
     return null;
   }
   return user;
+}
+
+/**
+ * Fast, local session read (no network). Use for UI-only checks.
+ * Not for authorization; rely on RLS or getCurrentUser() for that.
+ */
+export async function getCurrentSessionUser() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
+  return session?.user ?? null;
 }
