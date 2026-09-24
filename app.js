@@ -521,6 +521,7 @@ async function analyzeUserContext() {
     journalEntries = load("journalEntries", []);
   }
 
+  const sorted = [...checkins].sort((a, b) => b.timestamp - a.timestamp);
   const streak = calcStreak(checkins);
   const hasHistory = checkins.length > 0 || journalEntries.length > 0;
 
@@ -528,7 +529,7 @@ async function analyzeUserContext() {
 
   // Check for absence (last check-in was more than 3 days ago)
   if (checkins.length > 0) {
-    const lastCheckin = new Date(checkins[0].date);
+    const lastCheckin = new Date(sorted[0].date);
     const daysSinceLast = Math.floor((new Date() - lastCheckin) / (1000 * 60 * 60 * 24));
     if (daysSinceLast > 3) return "returningAfterAbsence";
   }
@@ -552,7 +553,7 @@ async function analyzeUserContext() {
   if (journalEntries.length >= 5) return "journalActive";
 
   // Check for quiet check-ins (low energy)
-  const recentCheckins = checkins.slice(0, 3);
+  const recentCheckins = sorted.slice(0, 3);
   if (recentCheckins.length >= 3 && recentCheckins.every(c => c.energy <= 4)) {
     return "quietCheckins";
   }
