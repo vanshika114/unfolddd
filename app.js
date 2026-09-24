@@ -707,6 +707,7 @@ function initCheckin() {
       } else {
         document.querySelector('[data-distortion="none"]')?.classList.remove("selected");
         btn.classList.toggle("selected");
+        state.checkin.distortions = state.checkin.distortions.filter(x => x !== "none");
         const idx = state.checkin.distortions.indexOf(d);
         if (idx > -1) state.checkin.distortions.splice(idx, 1);
         else state.checkin.distortions.push(d);
