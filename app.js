@@ -2,8 +2,15 @@
     Unfold— app.js
    ═══════════════════════════════════════════════ */
 
-// Import Supabase client for authentication
-import { supabase, getCurrentUser } from './supabase.js';
+// Import Supabase client for authentication and the demo-only local auth path.
+import {
+  supabase,
+  getCurrentUser,
+  LOCAL_DEMO_ACCOUNTS,
+  signInDemo,
+  signOutDemo,
+  isDemoSessionActive
+} from './supabase.js';
 
 /* ─── DATA: THEMES ─── */
 const THEMES = {
@@ -500,7 +507,7 @@ async function analyzeUserContext() {
   const today = todayKey();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayKey = yesterday.toISOString().split("T")[0];
+  const yesterdayKey = localDateKey(yesterday);
 
   // ═══════════════════════════════════════════════════════════════
   //   DATABASE: Check journal entries from Supabase for context analysis
@@ -509,12 +516,16 @@ async function analyzeUserContext() {
   let journalEntries = [];
   const user = await getCurrentUser();
   if (user) {
-    const { data: entries, error } = await supabase
-      .from('journal_entries')
-      .select('id')
-      .eq('user_id', user.id);
-    if (!error && entries) {
-      journalEntries = entries;
+    if (user.isDemo || user.sessionType === 'demo') {
+      journalEntries = load(`journalEntries_${user.id}`, []);
+    } else {
+      const { data: entries, error } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('user_id', user.id);
+      if (!error && entries) {
+        journalEntries = entries;
+      }
     }
   } else {
     // Fallback to localStorage for non-authenticated users
@@ -528,7 +539,7 @@ async function analyzeUserContext() {
 
   // Check for absence (last check-in was more than 3 days ago)
   if (checkins.length > 0) {
-    const lastCheckin = new Date(checkins[0].date);
+    const lastCheckin = parseLocalDateKey(checkins[0].date);
     const daysSinceLast = Math.floor((new Date() - lastCheckin) / (1000 * 60 * 60 * 24));
     if (daysSinceLast > 3) return "returningAfterAbsence";
   }
@@ -635,8 +646,22 @@ async function refreshHome() {
   if (text) text.textContent = `${done} / ${total} done`;
 }
 
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseLocalDateKey(dateKey) {
+  if (!dateKey || typeof dateKey !== "string") return new Date();
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) return new Date();
+  return new Date(year, month - 1, day);
+}
+
 function todayKey() {
-  return new Date().toISOString().split("T")[0];
+  return localDateKey();
 }
 
 function updateStreakDisplay(checkins) {
@@ -660,7 +685,7 @@ function calcStreak(checkins) {
   let cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
   for (let i = 0; i < dates.length; i++) {
-    const d = new Date(dates[i]);
+    const d = parseLocalDateKey(dates[i]);
     const diff = Math.round((cursor - d) / 86400000);
     if (diff === 0 || diff === 1) { streak++; cursor = d; }
     else break;
@@ -823,17 +848,12 @@ async function saveJournalEntry() {
 
   console.log('Textarea has content, checking authentication...');
 
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Check authentication before saving to Supabase
-  //   Use getCurrentUser() as the single source of truth
-  // ═══════════════════════════════════════════════════════════════
   const user = await getCurrentUser();
   
   console.log('User check result:', { user: !!user });
   
   if (!user) {
     console.log('User not authenticated, showing sign in message');
-    // User is not authenticated - show friendly message
     const btn = document.getElementById("saveEntry");
     if (btn) {
       const orig = btn.textContent;
@@ -843,27 +863,57 @@ async function saveJournalEntry() {
     return;
   }
 
+  const prompt = JOURNAL_PROMPTS[state.currentPromptIndex];
+  const text = textarea.value.trim();
+
+  if (user.isDemo || user.sessionType === 'demo') {
+    const entry = {
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `demo-${Date.now()}`,
+      user_id: user.id,
+      date: todayKey(),
+      text,
+      prompt: prompt.text,
+      prompt_source: prompt.source,
+      created_at: new Date().toISOString(),
+    };
+
+    const demoEntries = load(`journalEntries_${user.id}`, []);
+    const nextEntries = [entry, ...demoEntries].slice(0, 200);
+    save(`journalEntries_${user.id}`, nextEntries);
+
+    save("journalDraft", "");
+    textarea.value = "";
+    const wc = document.getElementById("wordCount");
+    if (wc) wc.textContent = "0 words";
+    await renderEntries();
+
+    const btn = document.getElementById("saveEntry");
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "Saved! ✓";
+      setTimeout(() => btn.textContent = orig, 1500);
+    }
+    return;
+  }
+
   console.log('User authenticated, preparing to save to Supabase');
   console.log('User ID:', user.id);
   console.log('Entry data:', {
     user_id: user.id,
     date: todayKey(),
-    text_length: textarea.value.trim().length,
-    prompt: JOURNAL_PROMPTS[state.currentPromptIndex].text,
-    prompt_source: JOURNAL_PROMPTS[state.currentPromptIndex].source
+    text_length: text.length,
+    prompt: prompt.text,
+    prompt_source: prompt.source
   });
 
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Save journal entry to Supabase journal_entries table
-  // ═══════════════════════════════════════════════════════════════
   const { data, error } = await supabase
     .from('journal_entries')
     .insert({
       user_id: user.id,
       date: todayKey(),
-      text: textarea.value.trim(),
-      prompt: JOURNAL_PROMPTS[state.currentPromptIndex].text,
-      prompt_source: JOURNAL_PROMPTS[state.currentPromptIndex].source,
+      text,
+      prompt: prompt.text,
+      prompt_source: prompt.source,
     })
     .select()
     .single();
@@ -887,20 +937,14 @@ async function saveJournalEntry() {
 
   console.log('Journal entry saved successfully:', data);
 
-  // Clear draft and textarea
-  // ═══════════════════════════════════════════════════════════════
-  //   NOTE: Draft is cleared from localStorage after successful save
-  // ═══════════════════════════════════════════════════════════════
   save("journalDraft", "");
   textarea.value = "";
   const wc = document.getElementById("wordCount");
   if (wc) wc.textContent = "0 words";
   
   console.log('Calling renderEntries() to refresh list...');
-  // Refresh entries list from database
   renderEntries();
 
-  // Visual feedback
   const btn = document.getElementById("saveEntry");
   if (btn) {
     const orig = btn.textContent;
@@ -911,35 +955,68 @@ async function saveJournalEntry() {
 
 async function renderEntries() {
   console.log('renderEntries() called');
-  
+
   const list = document.getElementById("entriesList");
   if (!list) {
     console.log('renderEntries() aborted: entriesList element not found');
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Check authentication before loading from Supabase
-  //   Use getCurrentUser() as the single source of truth
-  // ═══════════════════════════════════════════════════════════════
   const user = await getCurrentUser();
-  
+
   console.log('renderEntries() user check:', { user: !!user });
-  
+
+  const setEmptyState = (message) => {
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = message;
+    list.replaceChildren(empty);
+  };
+
+  const renderEntryCards = (entries) => {
+    const fragment = document.createDocumentFragment();
+    (entries || []).slice(0, 10).forEach((entry) => {
+      const item = document.createElement('div');
+      item.className = 'entry-item';
+      item.addEventListener('click', () => loadEntry(entry.id));
+
+      const date = document.createElement('div');
+      date.className = 'entry-date';
+      date.textContent = formatDate(entry.date);
+
+      const preview = document.createElement('div');
+      preview.className = 'entry-preview';
+      const rawText = typeof entry.text === 'string' ? entry.text.trim() : '';
+      const previewText = rawText.length > 80 ? rawText.slice(0, 80) + '...' : rawText;
+      preview.textContent = previewText;
+
+      item.append(date, preview);
+      fragment.appendChild(item);
+    });
+    list.replaceChildren(fragment);
+  };
+
   if (!user) {
     console.log('User not authenticated, showing sign in message');
-    // User is not authenticated - show empty state
-    list.innerHTML = '<p class="empty-state">Sign in to view your journal entries.</p>';
+    setEmptyState('Sign in to view your journal entries.');
+    return;
+  }
+
+  if (user.isDemo || user.sessionType === 'demo') {
+    console.log('User authenticated as demo, loading local journal entries');
+    const entries = load(`journalEntries_${user.id}`, []);
+    if (!entries || entries.length === 0) {
+      setEmptyState('Your story begins with a single page.');
+      return;
+    }
+
+    renderEntryCards(entries);
     return;
   }
 
   console.log('User authenticated, loading entries from Supabase');
   console.log('User ID:', user.id);
 
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Load journal entries from Supabase journal_entries table
-  //   Order by created_at descending to show newest first
-  // ═══════════════════════════════════════════════════════════════
   const { data: entries, error } = await supabase
     .from('journal_entries')
     .select('*')
@@ -957,34 +1034,23 @@ async function renderEntries() {
       details: error.details,
       hint: error.hint
     });
-    list.innerHTML = '<p class="empty-state">Failed to load entries. Please try again.</p>';
+    setEmptyState('Failed to load entries. Please try again.');
     return;
   }
 
   if (!entries || entries.length === 0) {
     console.log('No entries found for user');
-    list.innerHTML = '<p class="empty-state">Your story begins with a single page.</p>';
+    setEmptyState('Your story begins with a single page.');
     return;
   }
 
   console.log(`Found ${entries.length} entries, rendering...`);
-
-  // Render entries
-  list.innerHTML = entries.map(e => `
-    <div class="entry-item" onclick="loadEntry('${e.id}')">
-      <div class="entry-date">${formatDate(e.date)}</div>
-      <div class="entry-preview">${e.text.substring(0, 80)}${e.text.length > 80 ? "..." : ""}</div>
-    </div>
-  `).join("");
+  renderEntryCards(entries);
 }
 
 async function loadEntry(id) {
   console.log('loadEntry() called with id:', id);
   
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Check authentication before loading from Supabase
-  //   Use getCurrentUser() as the single source of truth
-  // ═══════════════════════════════════════════════════════════════
   const user = await getCurrentUser();
   
   console.log('loadEntry() user check:', { user: !!user });
@@ -994,12 +1060,17 @@ async function loadEntry(id) {
     return;
   }
 
+  if (user.isDemo || user.sessionType === 'demo') {
+    const entries = load(`journalEntries_${user.id}`, []);
+    const entry = (entries || []).find((item) => item.id === id);
+    const textarea = document.getElementById("journalTextarea");
+    if (textarea && entry) textarea.value = entry.text;
+    return;
+  }
+
   console.log('User authenticated, loading entry from Supabase');
   console.log('User ID:', user.id);
 
-  // ═══════════════════════════════════════════════════════════════
-  //   DATABASE: Load specific journal entry from Supabase by UUID
-  // ═══════════════════════════════════════════════════════════════
   const { data: entry, error } = await supabase
     .from('journal_entries')
     .select('*')
@@ -1019,6 +1090,12 @@ async function loadEntry(id) {
 }
 
 function formatDate(dateStr) {
+  if (!dateStr || typeof dateStr !== "string") return "";
+  const match = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  if (match) {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  }
   return new Date(dateStr).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
@@ -1189,23 +1266,50 @@ function renderRitual() {
   if (!list) return;
 
   if (!steps.length) {
-    list.innerHTML = '<p class="empty-state ritual-empty">No steps yet. Add your first one ←</p>';
+    const empty = document.createElement('p');
+    empty.className = 'empty-state ritual-empty';
+    empty.textContent = 'No steps yet. Add your first one ←';
+    list.replaceChildren(empty);
     updateRitualProgress(0, 0);
     return;
   }
 
-  list.innerHTML = steps.map(s => `
-    <div class="ritual-step-item ${s.done ? "done" : ""}" data-id="${s.id}">
-      <div class="step-checkbox ${s.done ? "checked" : ""}" onclick="toggleStep(${s.id})">
-        ${s.done ? "✓" : ""}
-      </div>
-      <div class="step-info">
-        <div class="step-name">${s.categoryEmoji} ${s.name}</div>
-        <div class="step-meta">${s.duration} min</div>
-      </div>
-      <button class="step-delete" onclick="deleteStep(${s.id})">×</button>
-    </div>
-  `).join("");
+  const fragment = document.createDocumentFragment();
+  steps.forEach((step) => {
+    const item = document.createElement('div');
+    item.className = `ritual-step-item ${step.done ? 'done' : ''}`;
+    item.dataset.id = String(step.id);
+
+    const checkbox = document.createElement('div');
+    checkbox.className = `step-checkbox ${step.done ? 'checked' : ''}`;
+    checkbox.type = 'button';
+    checkbox.textContent = step.done ? '✓' : '';
+    checkbox.addEventListener('click', () => toggleStep(step.id));
+
+    const info = document.createElement('div');
+    info.className = 'step-info';
+
+    const name = document.createElement('div');
+    name.className = 'step-name';
+    name.textContent = `${step.categoryEmoji} ${step.name}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'step-meta';
+    meta.textContent = `${step.duration} min`;
+
+    info.append(name, meta);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'step-delete';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => deleteStep(step.id));
+
+    item.append(checkbox, info, remove);
+    fragment.appendChild(item);
+  });
+
+  list.replaceChildren(fragment);
 
   const done = steps.filter(s => s.done).length;
   updateRitualProgress(done, steps.length);
@@ -1315,16 +1419,34 @@ function renderSaved() {
   const saved = load("savedAffirmations", []);
   const list = document.getElementById("savedList");
   if (!list) return;
+
   if (!saved.length) {
-    list.innerHTML = '<p class="empty-state">None saved yet.</p>';
+    const empty = document.createElement('p');
+    empty.className = 'empty-state';
+    empty.textContent = 'None saved yet.';
+    list.replaceChildren(empty);
     return;
   }
-  list.innerHTML = saved.map((a, i) => `
-    <div class="saved-item">
-      <span>"${a.text}"</span>
-      <button class="unsave-btn" onclick="unsaveAffirmation(${i})">×</button>
-    </div>
-  `).join("");
+
+  const fragment = document.createDocumentFragment();
+  saved.forEach((affirmation, index) => {
+    const item = document.createElement('div');
+    item.className = 'saved-item';
+
+    const text = document.createElement('span');
+    text.textContent = `"${affirmation.text}"`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'unsave-btn';
+    remove.textContent = '×';
+    remove.addEventListener('click', () => unsaveAffirmation(index));
+
+    item.append(text, remove);
+    fragment.appendChild(item);
+  });
+
+  list.replaceChildren(fragment);
 }
 
 function unsaveAffirmation(idx) {
@@ -1415,12 +1537,12 @@ function drawChart(checkins) {
   const W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H);
 
-  // Get last 14 days
+  // Get last 14 local calendar days
   const days = [];
   for (let i = 13; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    days.push(d.toISOString().split("T")[0]);
+    days.push(localDateKey(d));
   }
 
   const isDark = document.body.dataset.theme === "dark";
@@ -1781,7 +1903,8 @@ function updateUserDisplay(user) {
 }
 
 /**
- * Handle sign in with email and password
+ * Handle sign in with email and password.
+ * Demo accounts are checked first so local development works without Supabase.
  */
 async function handleSignIn() {
   const email = authEmail?.value.trim();
@@ -1797,6 +1920,15 @@ async function handleSignIn() {
   if (signInBtn) signInBtn.disabled = true;
   if (signUpBtn) signUpBtn.disabled = true;
   hideAuthError();
+
+  const demoUser = signInDemo(email, password);
+  if (demoUser) {
+    hideAuthOverlay();
+    updateUserDisplay(demoUser);
+    if (signInBtn) signInBtn.disabled = false;
+    if (signUpBtn) signUpBtn.disabled = false;
+    return;
+  }
   
   try {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -1821,7 +1953,8 @@ async function handleSignIn() {
 }
 
 /**
- * Handle sign up with email and password
+ * Handle sign up with email and password.
+ * Demo credentials remain valid locally while the Supabase code stays available.
  */
 async function handleSignUp() {
   const email = authEmail?.value.trim();
@@ -1833,6 +1966,13 @@ async function handleSignUp() {
     return;
   }
   
+  const demoUser = signInDemo(email, password);
+  if (demoUser) {
+    hideAuthOverlay();
+    updateUserDisplay(demoUser);
+    return;
+  }
+
   if (password.length < 6) {
     showAuthError('Password must be at least 6 characters long');
     return;
@@ -1867,10 +2007,17 @@ async function handleSignUp() {
 }
 
 /**
- * Handle sign out
+ * Handle sign out.
  */
 async function handleSignOut() {
   try {
+    if (isDemoSessionActive()) {
+      await signOutDemo();
+      showAuthOverlay();
+      updateUserDisplay(null);
+      return;
+    }
+
     const { error } = await supabase.auth.signOut();
     
     if (error) {
