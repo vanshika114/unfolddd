@@ -7,6 +7,13 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script type="importmap">
+    {
+      "imports": {
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.110.7"
+      }
+    }
+  </script>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body data-theme="light">
@@ -123,12 +130,12 @@
     <section class="page active" id="page-home">
       <div class="page-header">
         <div>
-          <p class="page-eyebrow" id="todayDate">Loading...</p>
+          <p class="page-eyebrow" id="todayDate">Your daily reset</p>
           <h1 class="page-title">Good morning. <br><em>How are you rooting today?</em></h1>
         </div>
         <div class="quote-pill" id="dailyQuote">
           <span class="quote-icon">✦</span>
-          <span class="quote-text">Loading quote...</span>
+          <span class="quote-text">"The present moment is the only moment available to us." — Thich Nhat Hanh</span>
         </div>
       </div>
 
@@ -161,7 +168,7 @@
         <div class="dash-card card-journal" id="openJournal">
           <div class="dash-card-inner">
             <div class="dash-card-label">Today's prompt</div>
-            <div class="journal-preview" id="homePromptPreview">Loading...</div>
+            <div class="journal-preview" id="homePromptPreview">"What would you do today if you knew you could not fail?"</div>
             <button class="card-cta">Write now →</button>
           </div>
         </div>
@@ -196,7 +203,7 @@
         <div class="dash-card card-affirm">
           <div class="dash-card-inner">
             <div class="dash-card-label">Today's affirmation</div>
-            <div class="affirm-preview" id="homeAffirmation">Loading...</div>
+            <div class="affirm-preview" id="homeAffirmation">"I am enough, exactly as I am, right now in this moment."</div>
             <button class="card-cta affirm-refresh" id="refreshAffirmation">New affirmation ↻</button>
           </div>
         </div>
@@ -205,7 +212,7 @@
         <div class="dash-card card-reflection">
           <div class="dash-card-inner">
             <div class="dash-card-label">Reflection of the Day</div>
-            <div class="reflection-prompt" id="reflectionPrompt">Loading...</div>
+            <div class="reflection-prompt" id="reflectionPrompt">What made today feel meaningful?</div>
             <div class="reflection-writing">
               <textarea 
                 class="reflection-textarea" 
