@@ -3,7 +3,7 @@
    ═══════════════════════════════════════════════ */
 
 // Import Supabase client for authentication
-import { supabase, getCurrentUser } from './supabase.js';
+import { supabase, getCurrentUser, AUTH_REQUIRED } from './supabase.js';
 
 /* ─── DATA: THEMES ─── */
 const THEMES = {
@@ -1671,6 +1671,12 @@ const settingsSignOutBtn = document.getElementById('settingsSignOutBtn');
  * Uses getCurrentUser() as the single source of truth
  */
 async function checkSession() {
+  if (!AUTH_REQUIRED) {
+    hideAuthOverlay();
+    updateUserDisplay(null);
+    return;
+  }
+
   try {
     const user = await getCurrentUser();
     
@@ -1929,7 +1935,7 @@ function setupAuthListeners() {
     if (event === 'SIGNED_IN' && session) {
       hideAuthOverlay();
       updateUserDisplay(session.user);
-    } else if (event === 'SIGNED_OUT') {
+    } else if (event === 'SIGNED_OUT' && AUTH_REQUIRED) {
       showAuthOverlay();
       updateUserDisplay(null);
     }
